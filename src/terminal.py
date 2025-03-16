@@ -1,9 +1,6 @@
 from build123d import *
-from ocp_vscode import *
 
-import copy
 from math import sin, cos, tan, asin, acos, atan, atan2, pi, floor, sqrt, degrees
-from enum import Enum
 from dataclasses import dataclass
 
 from util import circle_pivot_tangent_angle
@@ -43,7 +40,7 @@ class ChocoTerminal:
         c = Curve() + [
             line := Line((0, top), (self.flat_width / 2, top)),
             arc := JernArc(start=(0, -r2), tangent=(1, 0), radius=r2, 
-                    arc_size=180. - (180./pi) * circle_pivot_tangent_angle(r2, top, self.flat_width / 2)),
+                    arc_size=180. - circle_pivot_tangent_angle(r2, top, self.flat_width / 2)),
             Line(line@1, arc@1)
         ]
         c = c + mirror(c, about=Plane.YZ)
