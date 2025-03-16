@@ -1,0 +1,55 @@
+CM cheap yagi 436.5MHz
+CE
+
+SY fcenter=436.5
+
+SY d_reflector=3.2e-3
+SY d_dipole=3.2e-3
+SY d_director=3.2e-3
+
+SY pos_70cm_reflector=0
+SY pos_70cm_driven_element=pos_70cm_reflector + 63.5e-3
+SY pos_70cm_director1=pos_70cm_reflector + 139.7e-3
+SY pos_70cm_director2=pos_70cm_reflector + 285.8e-3
+SY pos_70cm_director3=pos_70cm_reflector + 444.5e-3
+SY pos_70cm_director4=pos_70cm_reflector + 609.6e-3
+SY pos_70cm_director5=pos_70cm_reflector + 774.7e-3
+SY pos_70cm_director6=pos_70cm_reflector + 958.9e-3
+
+SY fscale=434/fcenter
+SY l_70cm_reflector=340.4e-3*fscale
+SY l_70cm_driven_element=151e-3 + 166e-3
+SY l_70cm_director1=315e-3*fscale
+SY l_70cm_director2=304.8e-3*fscale
+SY l_70cm_director3=304.8e-3*fscale
+SY l_70cm_director4=304.8e-3*fscale
+SY l_70cm_director5=304.8e-3*fscale
+SY l_70cm_director6=281.9e-3*fscale
+
+SY w_folded_dipole=25e-3
+SY drive_offset=25e-3/2
+SY dipole_center_offset=l_70cm_driven_element/2 - 151e-3
+
+GW	1	1	pos_70cm_driven_element	0	drive_offset	pos_70cm_driven_element	w_folded_dipole	drive_offset	d_dipole/2
+GW	2	5	pos_70cm_driven_element	w_folded_dipole	l_70cm_driven_element/2+dipole_center_offset	pos_70cm_driven_element	w_folded_dipole	drive_offset	d_dipole/2
+GW	21	1	pos_70cm_driven_element	w_folded_dipole	drive_offset	pos_70cm_driven_element	w_folded_dipole	-drive_offset	d_dipole/2
+GW	3	1	pos_70cm_driven_element	0	l_70cm_driven_element/2+dipole_center_offset	pos_70cm_driven_element	w_folded_dipole	l_70cm_driven_element/2+dipole_center_offset	d_dipole/2
+GW	4	5	pos_70cm_driven_element	0	l_70cm_driven_element/2+dipole_center_offset	pos_70cm_driven_element	0	drive_offset	d_dipole/2
+GW	41	5	pos_70cm_driven_element	0	drive_offset	pos_70cm_driven_element	0	-l_70cm_driven_element/2+dipole_center_offset	d_dipole/2
+
+GW	5	11	pos_70cm_reflector	0	-l_70cm_reflector/2	pos_70cm_reflector	0	l_70cm_reflector/2	d_reflector/2
+
+GW	6	9	pos_70cm_director1	0	-l_70cm_director1/2	pos_70cm_director1	0	l_70cm_director1/2	d_director/2
+GW	7	9	pos_70cm_director2	0	-l_70cm_director2/2	pos_70cm_director2	0	l_70cm_director2/2	d_director/2
+GW	8	9	pos_70cm_director3	0	-l_70cm_director3/2	pos_70cm_director3	0	l_70cm_director3/2	d_director/2
+GW	9	9	pos_70cm_director4	0	-l_70cm_director4/2	pos_70cm_director4	0	l_70cm_director4/2	d_director/2
+GW	10	9	pos_70cm_director5	0	-l_70cm_director5/2	pos_70cm_director5	0	l_70cm_director5/2	d_director/2
+GW	11	8	pos_70cm_director6	0	-l_70cm_director6/2	pos_70cm_director6	0	l_70cm_director6/2	d_director/2
+
+GE	0
+
+EK
+EX	0	1	1	0	1	0
+GN	-1
+FR	0	1	0	0	fcenter	0
+EN
