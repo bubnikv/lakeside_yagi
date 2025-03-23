@@ -1,11 +1,9 @@
 from build123d import *
 from ocp_vscode import *
 
-import copy
-from math import sin, cos, tan, asin, acos, atan, atan2, pi, floor, sqrt, degrees
+from math import atan, degrees
 from enum import Enum
 
-from util import circle_pivot_tangent_angle
 import housing
 from terminal import ChocoTerminal
 
@@ -32,9 +30,9 @@ d_rod_tip=16
 # Diameter of the aluminium element 1/8 of an inch
 dmr_element=3.175
 
-# Elevation of the antenna element from the fishing rod surface.
-elevation_rod_element_2m=print_gap+2*print_line_width
-elevation_rod_element_70cm=elevation_rod_element_2m
+# Elevation of the antenna element axis above the fishing rod surface.
+elevation_rod_element_2m=print_gap+2*print_line_width+dmr_element/2
+elevation_rod_element_70cm=elevation_rod_element_2m+dmr_element/2
 
 # Width of the element housing along the element
 element_housing_width = 21 + 2 * print_gap + 2 * sleeve_thickness
@@ -44,15 +42,10 @@ element_housing_wall_thickness = 2*print_line_width
 # of the tube around the element.
 element_housing_wall_thickness_extra = 1 * print_line_width
 
-# Offset of the element center from the edge of the element housing
-element_housing_offset = 0.5 * dmr_element + print_gap_element + element_housing_wall_thickness
-
-element_tube_dmr = dmr_element + 2 * (print_gap_element + element_housing_wall_thickness)
-
 # Positions of 2m elements with regard to the base of the rod
 # Distance between the center of the reflector and the center of the last director.
 l_2m=1016
-pos_base=l_rod - l_2m - element_tube_dmr/2
+pos_base=l_rod - l_2m - (dmr_element/2 + print_gap_element + element_housing_wall_thickness)
 pos_2m_reflector=pos_base - 30
 pos_2m_driven_element=pos_2m_reflector + 50 + 560
 pos_2m_director1=pos_2m_reflector + 50 + 860
@@ -103,42 +96,17 @@ class Polarization(Enum):
     HORIZONTAL = 0
     VERTICAL = 1
 
-def make_rod(offset, angle=360):
-    r1 = 0.5*d_rod_base+offset
-    r2 = 0.5*d_rod_tip+offset
-    return loft([Plane.YZ * Circle(r1), Plane.YZ.offset(l_rod) * Circle(r2)])
-
-def make_c_sleeve(r1: float, r2: float, length: float, thickness: float, angle: float):
-    def make_c_slot(r1: float, r2: float, angle: float) -> Face:
-        arc = [CenterArc(center=(0,0,0), radius=r, start_angle=90, arc_size=angle/2) for r in (r1, r2)]
-        c = Curve() + arc + Line(arc[0] @ 1, arc[1] @ 1)
-        c = c + mirror(c, about=Plane.YZ)
-        return Face(outer_wire=Wire(c).fillet_2d(radius=0.499*abs(r2-r1), vertices=c.vertices()))
-    s1 = make_c_slot(r1, r1+thickness, angle)
-    s2 = make_c_slot(r2, r2+thickness, angle)
-    return loft([s1, Location([0, 0, length]) * s2])
-
-rod = make_rod(0)
-rod_drill = make_rod(print_gap)
-rod_sleeve = make_rod(print_gap + sleeve_thickness, 45) - rod_drill
-rod_C_sleeve = Plane.YZ * Rotation(0, 0, -90) * make_c_sleeve(
-    0.5*d_rod_base+print_gap, 0.5*d_rod_tip+print_gap, 
-    l_rod, sleeve_thickness, 270)
+rod = loft([Circle(d_rod_base/2), Pos(0, 0, l_rod) * Circle(d_rod_tip/2)])
 
 def rod_radius(pos):
     return 0.5 * (d_rod_base - pos * (d_rod_base - d_rod_tip) / l_rod)
 
-def element_elevation(pos, offset):
-    return rod_radius(pos) + offset
-
 def element(polarization: Polarization, position, length, elevation, dmr = dmr_element):
     return (
-        Rotation(0. if polarization is Polarization.HORIZONTAL else 90., 0., 0.) *
-        Location([
-            position, 
-            element_elevation(position, elevation) + 0.5*dmr_element, 
-            -0.5*length]) *
-        extrude(Circle(radius=.5*dmr), length))
+        Rotation(0, 0, 0 if polarization is Polarization.HORIZONTAL else 90) *
+        Location([0, rod_radius(position) + elevation, position]) *
+        # Centered cylinder aligned with X axis
+        Cylinder(radius=dmr/2, height=length, rotation=(0, 90, 0)))
 
 def elements(polarization: Polarization, element_data, elevation):
     elements = None
@@ -150,68 +118,26 @@ def elements(polarization: Polarization, element_data, elevation):
 print("Distance of the tip 2m rod from the laminate rod tip:", l_rod - elements_2m_data[2][0])
 print("Distance of the 2m reflector from the laminate rod base:", elements_2m_data[0][0])
 
-def rod_sleeve_slice(pos, len):
-    # Plane normal points in negative X direction.
-    lplane = Plane(
-        rod_C_sleeve.faces().sort_by(Axis.X).first)
-    return split(
-        split(rod_C_sleeve,
-              bisect_by=lplane.offset(-pos), keep=Keep.BOTTOM),
-        bisect_by=lplane.offset(-pos-len), keep=Keep.TOP)
-
 def element_housing(polarization: Polarization, pos, reversed, elevation, label):
-    # Increment to the rod_radius() for the outer radius of an element housing
-    # touching the boom surface.
-    sleeve_r_inc = print_gap_element + sleeve_thickness
-#    r = rod_radius(pos)+print_gap_element+sleeve_thickness
-#    d = 2 * r
-    # Height of the center of the element above the boom axis
-    element_height = element_elevation(pos, elevation) + 0.5*dmr_element
-    el_drill = element(Polarization.HORIZONTAL, pos, element_housing_width, elevation, dmr_element + 2 * print_gap_element)
-    r1 = rod_radius(pos - element_tube_dmr/2) + sleeve_r_inc
-    r2 = rod_radius(pos + element_tube_dmr/2) + sleeve_r_inc
-    if reversed:
-        (r1, r2) = (r2, r1)
-    el_outer = Location((pos, 0)) * mirror(housing.build_housing(
-        element_housing_width, element_tube_dmr/2,
-        # Make the housing a bit thicker at the far end to increase layer bonding
-        # of the tube around the element.
-        element_height+element_housing_wall_thickness_extra, 
-        r2, r1), Plane.YZ)
-    if reversed:
-        sleeve = mirror(rod_sleeve_slice(pos - element_housing_offset, element_housing_length),
-                        Plane.YZ.offset(pos))
-    else:
-        sleeve = rod_sleeve_slice(pos - element_housing_length + element_housing_offset, element_housing_length)
-#    show_object(sleeve, name="sleeve")
-#    show_object(el_outer, name="el_outer")
-#    show_object(el_drill, name="el_drill")
-#    if not sleeve.objects:
-#        print("seeve solids empty")
-#    if not el_outer.objects:
-#        print("el_outer solids empty")
-#    if not el_drill.objects:
-#        print("el_drill solids empty")
-    res = (sleeve + el_outer) - el_drill
-    font="Arial Black"
-    font_size=6
-    label_depth=-.28
-    label_plane = Plane(
-        origin = (sleeve.faces().sort_by(Axis.X).last.center().X, 
-                  r1 - 1, font_size/2 + 4), 
-        x_dir=(0,1,0), z_dir=(1,0,0))
-    label1 = label_plane * extrude(
-        Text(label[0], font_size=font_size, 
-             align=(Align.CENTER, Align.CENTER)), 
-        amount=label_depth)
-    label_plane.origin.Z = -label_plane.origin.Z
-    label2 = label_plane * extrude(
-        Text(label[1], font_size=font_size, 
-             align=(Align.CENTER, Align.CENTER)), 
-        amount=label_depth)
-    if reversed:
-        res = mirror(res, Plane.YZ.offset(pos))
-    return Rotation(0. if polarization is Polarization.HORIZONTAL else 90., 0., 0.) * (res - (label1 + label2))
+    assert d_rod_base > d_rod_tip
+    boom_taper_angle = degrees(atan((d_rod_tip - d_rod_base) / l_rod))
+    assert boom_taper_angle < 0
+    body = housing.element_holder_for_wire(
+        sleeve_base_radius = rod_radius(pos) + print_gap,
+        sleeve_thickness = sleeve_thickness,
+        sleeve_length = element_housing_length,
+        sleeve_angle = 270,
+        boom_taper_angle = -boom_taper_angle if reversed else boom_taper_angle,
+        housing_width = element_housing_width,
+        element_dmr = dmr_element,
+        element_above_boom_axis = rod_radius(pos) + elevation,
+        element_wall = print_gap_element + element_housing_wall_thickness,
+        element_wall_top_extra = element_housing_wall_thickness_extra,
+        label = housing.Label(labels=[label[0], label[1]], font='Arial Black', size=6, depth=.28))
+#    show_object(body, name="skoronakonci")
+    return Pos(0, 0, pos) * \
+           Rotation(0, 0, 0. if polarization is Polarization.HORIZONTAL else 90.) * \
+           Rotation(0, -180 if reversed else 0, 0) * body
 
 def element_housings(polarization: Polarization, element_data, elevation):
     housings = []
@@ -238,8 +164,6 @@ housings_2m, housings_2m_model = element_housings(polatization_2m, elements_2m_d
 polarization_70cm = Polarization.VERTICAL
 elements_70cm = elements(polarization_70cm, elements_70cm_data, elevation_rod_element_70cm)
 housings_70cm, housings_70cm_model = element_housings(Polarization.VERTICAL, elements_70cm_data, elevation_rod_element_70cm)
-
-(rod_drill, rod_sleeve) = (None, None)
 
 color_rod = Color(.35, .35, .35)
 color_elements = Color("yellow")
