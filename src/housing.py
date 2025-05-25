@@ -7,6 +7,8 @@ from math import sin, cos, tan, asin, acos, atan, atan2, pi, floor, sqrt, degree
 
 from util import circle_pivot_tangent_angle
 
+import terminal
+
 def make_c_sleeve(
     r1:         float,  # Radius at Z=0
     r2:         float,  # Radius at Z=length 
@@ -75,7 +77,10 @@ def element_housing_profile_xy(
             (0, housing_top - v_dent_depth)
         ]),
     ]
-    return make_face(c + mirror(c, about=Plane.YZ))
+    f = make_face(c + mirror(c, about=Plane.YZ))
+#    show_object(f, 'housing_profile')
+#    exit(0)
+    return f
 
 #    dent_depth = min(
 #        housing_top - base_r, # Should not dent into the top surface of the C-clamp
@@ -87,7 +92,8 @@ def element_housing_profile_yz(
         housing_depth:  float,  # Housing depth (along the boom axis)
         housing_top:    float,  # Height of the housing above the boom axis
         base_r:         float,  # Outer radius of the C-clamp
-        bevel_r:        float): # Bevel of the housing profile in the YZ plane, teardrop bevel at the print bed side
+        bevel_r:        float,  # Bevel of the housing profile in the YZ plane, teardrop bevel at the print bed side
+        housing_profile=None):  # Extra profile, used for choco terminal
     w = housing_depth / 2
     cntr = housing_top - w
     c = Curve() + [
@@ -101,7 +107,13 @@ def element_housing_profile_yz(
             (w, -base_r),
             (w, cntr)])
     ]
-    return Plane.ZY * make_face(c)
+    f = make_face(c)
+#    show_object(f, 'housing_profile0')
+    if housing_profile:
+        f = f + housing_profile
+#    show_object(f, 'housing_profile')
+#    exit(0)
+    return Plane.ZY * f
 
 # Housing for an antenna element in XY plane, centered at the center of the boom and along Z thickness,
 # tapering into an outer surface of a C-clamp, slightly intersecting it for booleanability.
@@ -112,10 +124,14 @@ def element_housing(
         housing_bottom, # Top of the housing profile rectangle
         v_dent_depth,   # Half height of the element housing rectangle
         base_r_start,
-        base_r_end):      # Radius touching the outer surface of a C-clamp
+        base_r_end,      # Radius touching the outer surface of a C-clamp
+        housing_profile=None):  # Extra profile, used for choco terminal
+    ext = housing_top
+    if housing_profile:
+        ext = max(ext, housing_profile.bounding_box().max.Y)
     l = loft([
         Pos(0, 0, zdir * housing_depth/2) * element_housing_profile_xy(
-            housing_width=housing_width, housing_top=housing_top, housing_bottom=housing_bottom, 
+            housing_width=housing_width, housing_top=ext, housing_bottom=housing_bottom, 
             v_dent_depth=v_dent_depth, base_r=base_r)
         for zdir, base_r in [(-1, base_r_start), (1, base_r_end)]
     ])
@@ -127,7 +143,8 @@ def element_housing(
                     housing_depth=housing_depth,
                     housing_top=housing_top,
                     base_r=(base_r_start + base_r_end)/2,
-                    bevel_r=housing_depth/2),
+                    bevel_r=housing_depth/2,
+                    housing_profile=housing_profile),
             amount = -housing_width)
 #    show_object(l2, 'extrude')
     return l & l2
@@ -161,6 +178,7 @@ def element_holder_body(
     housing_depth:      float,
     housing_top:        float,  # Top of the housing profile rectangle
     housing_bottom:     float,  # Top of the housing profile rectangle
+    housing_profile:    Face,   # Extra profile, used for choco terminal
     v_dent_depth:       float,
     label:              Label): # Half height of the element housing rectangle
 
@@ -180,7 +198,8 @@ def element_holder_body(
         housing_bottom=housing_bottom,
         v_dent_depth=v_dent_depth,
         base_r_start=sleeve_base_radius + sleeve_thickness - taper,
-        base_r_end=sleeve_base_radius + sleeve_thickness + taper)
+        base_r_end=sleeve_base_radius + sleeve_thickness + taper,
+        housing_profile=housing_profile)
 #    show_object(housing, 'housing')
     
     body = sleeve + housing
@@ -215,8 +234,61 @@ def element_holder_for_wire(
         housing_depth=h,
         housing_top=element_above_boom_axis + h / 2 + element_wall_top_extra,
         housing_bottom=sleeve_base_radius,
+        housing_profile=None, # extra profile, not used here
         v_dent_depth=3 * h / 4, # + element_wall_top_extra, #3 * h / 8 + element_wall_top_extra,
         label=label)
 #    show_object(body, 'body')
     wire = Pos(0, element_above_boom_axis) * Cylinder(element_dmr/2, housing_width, rotation=(0., -90., 0.))
     return body - wire
+
+def element_holder_for_choco_terminal(
+    sleeve_base_radius:     float,
+    sleeve_thickness:       float,
+    sleeve_length:          float,
+    sleeve_angle:           float,
+    boom_taper_angle:       float,
+    terminal:               terminal.ChocoTerminal,
+    terminal_spacing:       float, # Spacing between left / right terminals
+    element_above_boom_axis: float,
+    element_wall:           float,
+    element_wall_top_extra: float,
+    print_gap:              float, # 3D printing technology constraint: Gap between the terminal and the element
+    label:                  Label):
+
+    terminal_top = terminal.height - terminal.outer_diameter / 2
+    housing_width = terminal_spacing + 2 * terminal.length
+    body = element_holder_body(
+        sleeve_base_radius=sleeve_base_radius,
+        sleeve_thickness=sleeve_thickness,
+        sleeve_length=sleeve_length,
+        sleeve_angle=sleeve_angle,
+        boom_taper_angle=boom_taper_angle,
+        housing_width=housing_width,
+        housing_depth=terminal.outer_diameter + 2 * print_gap + 2 * element_wall,
+        housing_top=element_above_boom_axis + terminal_top + element_wall + element_wall_top_extra,
+        housing_bottom=sleeve_base_radius,
+        housing_profile=Pos(0, element_above_boom_axis + element_wall_top_extra) * \
+            terminal.teardrop_profile(print_gap + element_wall),
+        v_dent_depth=terminal_top, # + element_wall_top_extra, #3 * h / 8 + element_wall_top_extra,
+        label=label)
+#    show_object(body, 'body')
+#    wire = Pos(0, element_above_boom_axis) * Cylinder(element_dmr/2, housing_width, rotation=(0., -90., 0.))
+#    return body - wire
+    through = extrude(to_extrude = terminal.outer_profile(print_gap), amount = housing_width)
+    screw = Cylinder(terminal.screw_diameter/2, terminal.height * 2, rotation=(-90., 0., 0.), 
+                     align = (Align.CENTER, Align.CENTER, Align.MIN))
+    screw_offset_inner = (terminal_spacing + terminal.length) / 2 - terminal.screw_offset_from_center
+    screw_offset_outer = (terminal_spacing + terminal.length) / 2 + terminal.screw_offset_from_center
+    throughs = [Pos(0., 0., -housing_width/2) * through, 
+                Pos(0., 0., screw_offset_inner) * screw, 
+                Pos(0., 0., - screw_offset_inner) * screw,
+                Pos(0., 0., screw_offset_outer) * screw, 
+                Pos(0., 0., - screw_offset_outer) * screw]
+    
+#    extra = extrude(to_extrude = terminal.outer_profile(print_gap + element_wall), amount = housing_width)
+#    show_object([body, 
+#                 Pos(0., element_above_boom_axis + element_wall_top_extra, 0) * Rotation(0, 90, 0) * Rotation(0, 0, terminal.tangent_angle()) * extra], 'body+extra')
+#    exit(0)
+
+    return body - Pos(0., element_above_boom_axis, 0) * \
+        Rotation(0, 90, 0) * Rotation(0, 0, terminal.tangent_angle()) * (Part() + throughs)

@@ -1,6 +1,7 @@
 from build123d import *
 from ocp_vscode import *
 
+import os 
 from math import atan, degrees
 from enum import Enum
 
@@ -8,7 +9,7 @@ import housing
 from terminal import ChocoTerminal
 
 # Where to store the results
-output_path = '../output/'
+output_path = os.path.dirname(os.path.realpath(__file__)) + '/../output/'
 output_variant = '1'
 
 # 3D printing technology constraints
@@ -33,6 +34,10 @@ dmr_element=3.175
 # Elevation of the antenna element axis above the fishing rod surface.
 elevation_rod_element_2m=print_gap+2*print_line_width+dmr_element/2
 elevation_rod_element_70cm=elevation_rod_element_2m+dmr_element/2
+
+screw_terminal = ChocoTerminal.make_terminal_10mm2()
+# Gap between the left / right terminals. To be filled with a FR4 separator.
+terminal_spacing = 1.6
 
 # Width of the element housing along the element
 element_housing_width = 21 + 2 * print_gap + 2 * sleeve_thickness
@@ -114,6 +119,15 @@ def elements(polarization: Polarization, element_data, elevation):
         for (pos, element_length, reverse, label) in element_data]
     return Part() + elements
 
+def screw_terminals(polarization: Polarization, element_data, elevation):
+    elements = []
+    for pos, element_length, reverse, label in element_data:
+        gap = 2
+        t = Rotation(0, 90, 0) * Rotation(0, 0, (-1 if reverse else 1) * screw_terminal.tangent_angle()) * screw_terminal.body()
+        elements.append(Pos(screw_terminal.length/2 + gap/2, rod_radius(pos) + elevation, pos) * t)
+        elements.append(Pos(- screw_terminal.length/2 - gap/2, rod_radius(pos) + elevation, pos) * t)
+    return Part() + elements
+
 #print("Close encounters of 2m and 70cm elements: ", elements_70cm_data[0][0] - elements_2m_data[0][0], elements_70cm_data[4][0] - elements_2m_data[2][0], elements_70cm_data[7][0] - elements_2m_data[3][0])
 print("Distance of the tip 2m rod from the laminate rod tip:", l_rod - elements_2m_data[2][0])
 print("Distance of the 2m reflector from the laminate rod base:", elements_2m_data[0][0])
@@ -122,18 +136,34 @@ def element_housing(polarization: Polarization, pos, reversed, elevation, label)
     assert d_rod_base > d_rod_tip
     boom_taper_angle = degrees(atan((d_rod_tip - d_rod_base) / l_rod))
     assert boom_taper_angle < 0
-    body = housing.element_holder_for_wire(
-        sleeve_base_radius = rod_radius(pos) + print_gap,
-        sleeve_thickness = sleeve_thickness,
-        sleeve_length = element_housing_length,
-        sleeve_angle = 270,
-        boom_taper_angle = -boom_taper_angle if reversed else boom_taper_angle,
-        housing_width = element_housing_width,
-        element_dmr = dmr_element,
-        element_above_boom_axis = rod_radius(pos) + elevation,
-        element_wall = print_gap_element + element_housing_wall_thickness,
-        element_wall_top_extra = element_housing_wall_thickness_extra,
-        label = housing.Label(labels=[label[0], label[1]], font='Arial Black', size=6, depth=.28))
+    if False:
+        body = housing.element_holder_for_wire(
+            sleeve_base_radius = rod_radius(pos) + print_gap,
+            sleeve_thickness = sleeve_thickness,
+            sleeve_length = element_housing_length,
+            sleeve_angle = 270,
+            boom_taper_angle = -boom_taper_angle if reversed else boom_taper_angle,
+            housing_width = element_housing_width,
+            element_dmr = dmr_element,
+            element_above_boom_axis = rod_radius(pos) + elevation,
+            element_wall = print_gap_element + element_housing_wall_thickness,
+            element_wall_top_extra = element_housing_wall_thickness_extra,
+            label = housing.Label(labels=[label[0], label[1]], font='Arial Black', size=6, depth=.28))
+    else:
+        body = housing.element_holder_for_choco_terminal(
+            sleeve_base_radius = rod_radius(pos) + print_gap,
+            sleeve_thickness = sleeve_thickness,
+            sleeve_length = element_housing_length,
+            sleeve_angle = 270,
+            boom_taper_angle = -boom_taper_angle if reversed else boom_taper_angle,
+            terminal = screw_terminal,
+            terminal_spacing = terminal_spacing,
+            element_above_boom_axis = rod_radius(pos) + elevation,
+            element_wall = print_gap_element + element_housing_wall_thickness,
+            element_wall_top_extra = element_housing_wall_thickness_extra,
+            print_gap = print_gap,
+            label = housing.Label(labels=[label[0], label[1]], font='Arial Black', size=6, depth=.28))
+
 #    show_object(body, name="skoronakonci")
     return Pos(0, 0, pos) * \
            Rotation(0, 0, 0. if polarization is Polarization.HORIZONTAL else 90.) * \
@@ -149,17 +179,31 @@ def element_housings(polarization: Polarization, element_data, elevation):
         models.append(el)
     return (housings, Part() + models)
 
-#def export_elements_stl(elements):
-#    for (this_element_data, workplane) in elements:
-#        (pos, len, reversed, label) = this_element_data
-#        model = workplane.val()
+def export_elements_stl(elements):
+    for (this_element_data, model) in elements:
+        (pos, len, reversed, label) = this_element_data
 #        model = model.located(Location((pos, 0, 0)))
 #        model = model.rotate((0, 0, 0), (0, 1, 0), - 90 if reversed else 90)
-#        cq.exporters.export(model, output_path+label+'-'+output_variant+".stl")
+        label = label+'-'+output_variant
+#        model.color = Color("blue")
+        model.label = label
+        exporter = Mesher()
+        exporter.add_shape(model, part_number=label)
+#        exporter.add_meta_data(
+#            name_space="custom",
+#            name="test_meta_data",
+#            value="hello world",
+#            metadata_type="str",
+#            must_preserve=False,
+#        )
+        exporter.add_code_to_metadata()
+        os.makedirs(output_path, exist_ok=True)
+        exporter.write(output_path+label+".stl") # or 3mf
 
 polatization_2m = Polarization.HORIZONTAL
 elements_2m = elements(polatization_2m, elements_2m_data, elevation_rod_element_2m)
 housings_2m, housings_2m_model = element_housings(polatization_2m, elements_2m_data, elevation_rod_element_2m)
+screw_terminals_2m = screw_terminals(polatization_2m, elements_2m_data, elevation_rod_element_2m)
 
 polarization_70cm = Polarization.VERTICAL
 elements_70cm = elements(polarization_70cm, elements_70cm_data, elevation_rod_element_70cm)
@@ -174,3 +218,7 @@ show_object(elements_2m, name="2m elements", options={"color": color_elements.to
 show_object(elements_70cm, name="70cm elements", options={"color": color_elements.to_tuple()})
 show_object(housings_2m_model, name="2m housing", options={"color": color_housing.to_tuple()})
 show_object(housings_70cm_model, name="70cm housing", options={"color": color_housing.to_tuple()})
+show_object(screw_terminals_2m, name="2m screw terminals", options={"color": color_elements.to_tuple()})
+
+export_elements_stl(housings_2m)
+export_elements_stl(housings_70cm)

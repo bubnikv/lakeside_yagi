@@ -2,8 +2,9 @@ from build123d import *
 
 from math import sin, cos, tan, asin, acos, atan, atan2, pi, floor, sqrt, degrees
 from dataclasses import dataclass
+from util import circle_pivot_tangent_angle, tangent_pos
 
-from util import circle_pivot_tangent_angle
+from ocp_vscode import *
 
 @dataclass
 class ChocoTerminal:
@@ -33,18 +34,21 @@ class ChocoTerminal:
                    screw_diameter=3., screw_offset_from_center=4.,
                    center_hole_diameter=3.)
 
-    # Create terminal outer contour in XY plane with the flat side pointing up.
-    def outer_profile(self):
+    # Create terminal outer contour in XY plane with the flat side pointing up,
+    # terminal hole centered at (0, 0).
+    def outer_profile(self, offset=0):
         r2 = self.outer_diameter / 2
         top = self.height - r2
         c = Curve() + [
             line := Line((0, top), (self.flat_width / 2, top)),
             arc := JernArc(start=(0, -r2), tangent=(1, 0), radius=r2, 
-                    arc_size=180. - circle_pivot_tangent_angle(r2, top, self.flat_width / 2)),
+                    arc_size=90. + self.tangent_angle()),
             Line(line@1, arc@1)
         ]
         c = c + mirror(c, about=Plane.YZ)
         w = Wire(c).fillet_2d(radius=self.flat_bevel, vertices=c.vertices().group_by(Axis.Y)[-1])
+        if offset > 0:
+            w = w.offset_2d(offset)
         return make_face(w)
 
     def hole(self):
@@ -53,6 +57,21 @@ class ChocoTerminal:
     # Create terminal outer contour in XY plane with the flat side pointing up, drill the hole.
     def profile(self):
         return self.outer_profile() - self.hole()
+    
+    # Create terminal outer contour in XY plane with the flat side pointing up,
+    # tilted so that the right side is vertical and the left side has a 45 degree taper to the top.
+    def teardrop_profile(self, offset):
+        profile = Rotation(0, 0, -self.tangent_angle()) * self.outer_profile(offset)
+        edges = profile.edges()
+        teardrop_pos = tangent_pos(edges, tangent_angle=45, max_dir=Vector(-1, 1))
+        assert(teardrop_pos is not None)
+        max_x = tangent_pos(edges, tangent_angle=90, max_dir=Vector(-1, 0))
+        assert(max_x is not None)
+        l = IntersectingLine(teardrop_pos, (-1., -1.), other = Line(max_x, (max_x.X, max_x.Y + 100)))
+        profile = make_face(Wire.make_convex_hull(edges + ShapeList([l])))
+#        show_object(profile, name="teardrop_pos")
+#        exit(0)
+        return profile
 
     # Length of the terminal is aligned with the Z axis, centered along Z.
     def body(self, drill_screw_holes: bool = True):
@@ -65,3 +84,8 @@ class ChocoTerminal:
                    - Location([0, 0, + self.screw_offset_from_center]) * h
                    - Cylinder(self.center_hole_diameter / 2, self.height*2, rotation = (-90., 0., 0.)))
         return b
+
+    def tangent_angle(self):
+        r2 = self.outer_diameter / 2
+        top = self.height - r2
+        return 90 - circle_pivot_tangent_angle(r2, top, self.flat_width / 2)
