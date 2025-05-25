@@ -249,6 +249,7 @@ def element_holder_for_choco_terminal(
     boom_taper_angle:       float,
     terminal:               terminal.ChocoTerminal,
     terminal_spacing:       float, # Spacing between left / right terminals
+    extra_width:            float, # Extra width of the housing for the terminal, applied to both sides
     element_above_boom_axis: float,
     element_wall:           float,
     element_wall_top_extra: float,
@@ -256,7 +257,7 @@ def element_holder_for_choco_terminal(
     label:                  Label):
 
     terminal_top = terminal.height - terminal.outer_diameter / 2
-    housing_width = terminal_spacing + 2 * terminal.length
+    housing_width = terminal_spacing + 2 * (terminal.length + extra_width)
     body = element_holder_body(
         sleeve_base_radius=sleeve_base_radius,
         sleeve_thickness=sleeve_thickness,
@@ -274,21 +275,20 @@ def element_holder_for_choco_terminal(
 #    show_object(body, 'body')
 #    wire = Pos(0, element_above_boom_axis) * Cylinder(element_dmr/2, housing_width, rotation=(0., -90., 0.))
 #    return body - wire
-    through = extrude(to_extrude = terminal.outer_profile(print_gap), amount = housing_width)
-    screw = Cylinder(terminal.screw_diameter/2, terminal.height * 2, rotation=(-90., 0., 0.), 
+    through = extrude(to_extrude = Plane.ZY * terminal.teardrop_profile_inner(print_gap), 
+                      amount = housing_width)
+    screw = Rotation(0, 90, 0) * Rotation(0, 0, terminal.tangent_angle()) * \
+            Cylinder(terminal.screw_diameter/2, terminal.height * 2, rotation=(-90., 0., 0.), 
                      align = (Align.CENTER, Align.CENTER, Align.MIN))
     screw_offset_inner = (terminal_spacing + terminal.length) / 2 - terminal.screw_offset_from_center
     screw_offset_outer = (terminal_spacing + terminal.length) / 2 + terminal.screw_offset_from_center
-    throughs = [Pos(0., 0., -housing_width/2) * through, 
-                Pos(0., 0., screw_offset_inner) * screw, 
-                Pos(0., 0., - screw_offset_inner) * screw,
-                Pos(0., 0., screw_offset_outer) * screw, 
-                Pos(0., 0., - screw_offset_outer) * screw]
+    throughs = [Pos(housing_width/2) * through, 
+                Pos(screw_offset_inner) * screw, 
+                Pos(- screw_offset_inner) * screw,
+                Pos(screw_offset_outer) * screw, 
+                Pos(- screw_offset_outer) * screw]
     
-#    extra = extrude(to_extrude = terminal.outer_profile(print_gap + element_wall), amount = housing_width)
-#    show_object([body, 
-#                 Pos(0., element_above_boom_axis + element_wall_top_extra, 0) * Rotation(0, 90, 0) * Rotation(0, 0, terminal.tangent_angle()) * extra], 'body+extra')
-#    exit(0)
-
-    return body - Pos(0., element_above_boom_axis, 0) * \
-        Rotation(0, 90, 0) * Rotation(0, 0, terminal.tangent_angle()) * (Part() + throughs)
+    throughs = Pos(0., element_above_boom_axis, 0) * (Part() + throughs)
+ #   show_object([body, throughs])
+ #   exit(0)
+    return body - throughs

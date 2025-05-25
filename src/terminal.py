@@ -63,12 +63,37 @@ class ChocoTerminal:
     def teardrop_profile(self, offset):
         profile = Rotation(0, 0, -self.tangent_angle()) * self.outer_profile(offset)
         edges = profile.edges()
-        teardrop_pos = tangent_pos(edges, tangent_angle=45, max_dir=Vector(-1, 1))
+        teardrop_pos = tangent_pos(edges, tangent_angle=-45-90, max_dir=Vector(-1, 1))
         assert(teardrop_pos is not None)
-        max_x = tangent_pos(edges, tangent_angle=90, max_dir=Vector(-1, 0))
+        max_x = tangent_pos(edges, tangent_angle=-90, max_dir=Vector(-1, 0))
         assert(max_x is not None)
         l = IntersectingLine(teardrop_pos, (-1., -1.), other = Line(max_x, (max_x.X, max_x.Y + 100)))
-        profile = make_face(Wire.make_convex_hull(edges + ShapeList([l])))
+#        show_object(profile, name="teardrop_pos")
+#        show_object(l, name="l")
+        cc = Curve() + [Polyline([teardrop_pos, l@1, max_x, teardrop_pos])]
+        ff = make_face(cc)
+#        show_object(profile + ff, name="ff")
+#        exit(0)
+#        profile = make_face(Wire.make_convex_hull(edges + ShapeList([l])))
+#        show_object(profile, name="teardrop_pos merged")
+        profile = profile + ff
+#        profile =        show_object(profile, name="teardrop_pos merged")
+#        exit(0)
+        return profile
+
+    # Create terminal outer contour in XY plane with the flat side pointing up,
+    # tilted so that the right side is vertical and the left side has a 45 degree taper to the top.
+    def teardrop_profile_inner(self, offset):
+        profile = Rotation(0, 0, -self.tangent_angle()) * self.outer_profile(offset)
+        edges = profile.edges()
+        tangent_angle = 55
+        teardrop_pos = tangent_pos(edges, tangent_angle=tangent_angle, max_dir=Vector(1, -1))
+        assert(teardrop_pos is not None)
+        max_x = tangent_pos(edges, tangent_angle=90, max_dir=Vector(1, 0))
+        assert(max_x is not None)
+        l = IntersectingLine(teardrop_pos, Vector(1, 0, 0).rotate(Axis.Z, tangent_angle), other = Line(max_x, (max_x.X, max_x.Y - 10)))
+        ff = make_face(Curve() + [Polyline([teardrop_pos, l@1, max_x, teardrop_pos])])
+        profile = profile + ff
 #        show_object(profile, name="teardrop_pos")
 #        exit(0)
         return profile
